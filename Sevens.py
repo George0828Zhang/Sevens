@@ -256,15 +256,17 @@ def processBehavior(winn, weight):
 				for i in range(52):
 					if hand[i]:
 						# maximum 13 additions
-						data1.append(decode(hand, deck, i, True))
-						y1.append(10 if i!=card else 0)
+						vec = decode(hand, deck, i, True)
+						data1.append(vec)						
+						y1.append(coefF@vec if i!=card else 0)
 			else:
 				can = can_put(hand, deck)
 				for i in range(52):
 					if can[i]:
 						# maximum 8 additions
-						data2.append(decode(hand, deck, i, False))
-						y2.append(10 if i==card else 0)
+						vec = decode(hand, deck, i, False)
+						data2.append(vec)
+						y2.append(coef@vec if i==card else 0)
 				
 				# y2.append([float(t==card) for t in range(52)])
 
