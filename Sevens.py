@@ -115,21 +115,18 @@ BData = np.load('behavior_data.npy')
 def s_AI(hand, deck):
 	can = can_put(hand, deck)
 	fold = not any(can)
+	coefF = np.asarray([1, -0.5, 0.5, -0.5])
+	coef = np.asarray([1, 1, -0.5, -0.5])
 	if fold:
 		penalty = {}
 		for i in range(52):
 			if not hand[i]:
 				penalty[i] = np.inf
-				continue
-			coef = np.asarray([1, -0.5, 0.5, -0.5])
+				continue			
 			col = i // 13
 			val = i % 13
-			
+			# sum(num), dist, recent, damage
 			vec = np.zeros(4)
-			# snum = val
-			# dist = 0
-			# recent = 0
-			# sdam = 0
 			if val < 6:
 				for j in range(0, val+1):
 					if hand[col*13+j]:
@@ -154,12 +151,44 @@ def s_AI(hand, deck):
 						if col*13+j in Last3:
 							vec[2] = j - val
 						break
-			penalty[i] = coef@vec
+			penalty[i] = coefF@vec
 		card = min(penalty, key=penalty.get)
 		# print("[Debug]", penalty)
 		return card
 	else:
-		return can.index(True)
+		if hand[6]:
+			return 6
+		gain = {}
+		for i in range(52):
+			if not can[i]:
+				gain[i] = -np.inf
+				continue
+			
+			col = i // 13
+			val = i % 13
+			# num, potential/dist, damage, recent damge, 
+			vec = np.zeros(4)
+			vec[0] = val
+			if val < 6:
+				for j in range(0, val):
+					if hand[col*13+j]:
+						vec[1] += j / (val - j)
+					else:
+						vec[2] += j
+					if i+1 in Last3:
+						vec[3] += j
+			else:
+				for j in range(val+1, 12):
+					if hand[col*13+j]:
+						vec[1] += j / (j - val)
+					else:
+						vec[2] += j
+					if i-1 in Last3:
+						vec[3] += j
+			gain[i] = coef@vec
+		card = max(gain, key=gain.get)
+		# print("[Debug]", penalty)
+		return card
 		
 def s_AI2(hand, deck):
 	can = can_put(hand, deck)
@@ -236,6 +265,9 @@ while True:
 					if '*' in pinput:
 						# auto complete
 						pcard = s_AI(OnHand[current], Deck)
+						if '**' in pinput:
+							print("[Suggestion] {} {}".format(header[pcard//13], letters[pcard%13]))
+							continue
 						break
 					pcard, err = parse_input(pinput.lstrip())
 					if err:
