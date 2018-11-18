@@ -3,7 +3,9 @@
 import numpy as np
 import sys
 import random as rnd
+import math
 from datetime import datetime
+
 
 OnHand = {}
 Folded = {}
@@ -111,7 +113,7 @@ def print_set(sset, end='\n', highlight=''):
 
 
 coefF = np.asarray([1, -0.5, 0.3, -0.5])
-coef = np.asarray([1, 1, -1, -0.5])
+coef = np.asarray([1, 0.5, -0.5, -0.3])
 try:
 	BData = list(np.load('behavior_data.npy'))
 except FileNotFoundError:
@@ -175,23 +177,26 @@ def decode(hand, deck, i, last3, fold):
 		if val <= 6:
 			for j in range(0, val):
 				if hsuit[j]:
-					op_gain = 0
-					# ^ this is because op_gain will only influence j now
-					sub_gain += (j / (val - j))
+					op_gain *= 0.5
+					recent_gain *= 0.5
+					# ^ this is because op_gain will influence val less now
+					sub_gain += (j / math.sqrt(val - j))
 				else:
 					op_gain += j
-				if val+1 in recent:
-					recent_gain += j
+					if val+1 in recent:
+						recent_gain += j
 		if val >= 6:
 			for j in range(val+1, 13)[::-1]:
 				if hsuit[j]:
-					op_gain = 0
-					# ^ this is because op_gain will only influence j now
-					sub_gain += (j / (j - val))
+					op_gain *= 0.5
+					recent_gain *= 0.5
+					# ^ this is because op_gain will influence val less now
+					sub_gain += (j / math.sqrt(j - val))
 				else:
 					op_gain += j
-				if val-1 in recent:
-					recent_gain += j
+					if val-1 in recent:
+						recent_gain += j
+				
 		return np.asarray([gain, sub_gain, op_gain, recent_gain])
 
 
@@ -224,7 +229,7 @@ def s_AI(hand, deck):
 		return card
 
 
-def logBehavior(p, card, fold, can):
+def logBehavior(p, card, fold):
 	# fixed bug: Last3 was empty for the first action
 	Behavior[p].append([fold, card]+Last3[:]+OnHand[p][:]+Deck[:])
 
@@ -340,7 +345,7 @@ while True:
 			else:
 				pcard = s_AI(OnHand[current], Deck)
 
-			logBehavior(current, pcard, pfold, can)			
+			logBehavior(current, pcard, pfold)			
 			OnHand[current][pcard] = False
 			Deck[pcard] = not pfold
 			if pfold:
