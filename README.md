@@ -36,8 +36,8 @@ Total Gain = b0*gain + b1*potential_gain/dist - b2*op_gain - b3*recent_op_gain
 We calculate four values for each card on hand:
 - `gain`: the value of the card being put on deck.
 - `potential_gain/dist`: sum of the following value for each cards being blocked by the current card: value of blocked card, divided by distance between blocked and blocking card. The purpose of this is to encourage putting out cards that has many pending cards behind it. For example, if the cards on hand are `Spade 9, Q, K` then putting `Spade 9` yields a value of `12/3 + 13/4 = 7.25`.
-- `recent_dist`: this value is to penalize the previous one if the sequence is moving toward the card we chose to fold. For example, assume same condition as in `dist`, but `Spade 5` is one of the latest 3 cards put on deck, then folding `Spade A` yields a value of `5 - 1 = 4`. combining with values `a2 > a3` gives a meaningful tradeoff.
-- `damage`: damage to others. Suppose we have `Spade A, 3` then folding `Spade 3` yields `2`
+- `op_gain`: potential gain for opponents assuming worst case where all subsequent cards up until the next card in hand are not folded. For example, if hand contains `Spade 9,Q`, then putting `Spade 9` yields `10 + 11 = 21`. Note that `K` is ignored since it is more relevant to `Q`.
+- `recent_op_gain`: damage to others. Suppose we have `Spade A, 3` then folding `Spade 3` yields `2`
 
 As for `(b0, b1, b2, b3)`, we assume a initial model of `(1, 1, -0.5, -0.3)`. The model is updated (using behavior data from the Player or another winner) after each round. See [How it works (training and improving)](#how-it-works-training-and-improving)
 
