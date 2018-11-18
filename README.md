@@ -25,10 +25,23 @@ We calculate four values for each card on hand:
 - `recent_dist`: this value is to penalize the previous one if the sequence is moving toward the card we chose to fold. For example, assume same condition as in `dist`, but `Spade 5` is one of the latest 3 cards put on deck, then folding `Spade A` yields a value of `5 - 1 = 4`. combining with values `a2 > a3` gives a meaningful tradeoff.
 - `damage`: damage to others. Suppose we have `Spade A, 3` then folding `Spade 3` yields `2`
 
-As for `(a0, a1, a2, a3)`, we assume a initial model of `(1, 0.5, 0.3, 0.5)`. The model is updated (using behavior data from the Player or another winner) after each round. See [How it works (training and improving)](https://github.com/George0828Zhang/Sevens/new/model-2?readme=1#how-it-works-training-and-improving)
-##### Scenario 2 : `Hand` does contain available cards to put.
-In this case, 
+As for `(a0, a1, a2, a3)`, we assume a initial model of `(1, 0.5, 0.3, 0.5)`. The model is updated (using behavior data from the Player or another winner) after each round. See [How it works (training and improving)](#how-it-works-training-and-improving)
 
+The functions basically checks which card on hand has the least total penalty and outputs the card.
+##### Scenario 2 : `Hand` does contain available cards to put.
+In this case, we need to put a card. We assume the following model for the gain of putting a card
+```
+Total Gain = b0*gain + b1*potential_gain/dist - b2*op_gain - b3*recent_op_gain
+```
+We calculate four values for each card on hand:
+- `gain`: the value of the card being put on deck.
+- `potential_gain/dist`: sum of the following value for each cards being blocked by the current card: value of blocked card, divided by distance between blocked and blocking card. The purpose of this is to encourage putting out cards that has many pending cards behind it. For example, if the cards on hand are `Spade 9, Q, K` then putting `Spade 9` yields a value of `12/3 + 13/4 = 7.25`.
+- `recent_dist`: this value is to penalize the previous one if the sequence is moving toward the card we chose to fold. For example, assume same condition as in `dist`, but `Spade 5` is one of the latest 3 cards put on deck, then folding `Spade A` yields a value of `5 - 1 = 4`. combining with values `a2 > a3` gives a meaningful tradeoff.
+- `damage`: damage to others. Suppose we have `Spade A, 3` then folding `Spade 3` yields `2`
+
+As for `(b0, b1, b2, b3)`, we assume a initial model of `(1, 1, -0.5, -0.3)`. The model is updated (using behavior data from the Player or another winner) after each round. See [How it works (training and improving)](#how-it-works-training-and-improving)
+
+The functions basically checks which card on hand has the least total penalty and outputs the card.
 ## How it works (training and improving)
 Detailed explanation of the following functions 
 ```python
