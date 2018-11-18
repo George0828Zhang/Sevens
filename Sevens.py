@@ -8,6 +8,7 @@ from datetime import datetime
 OnHand = {}
 Folded = {}
 Deck = []
+Last3 = []
 Behavior = {}
 current = ""
 actions = 0
@@ -114,6 +115,55 @@ BData = np.load('behavior_data.npy')
 def s_AI(hand, deck):
 	can = can_put(hand, deck)
 	fold = not any(can)
+	if fold:
+		penalty = {}
+		for i in range(52):
+			if not hand[i]:
+				penalty[i] = np.inf
+				continue
+			coef = np.asarray([1, -0.5, 0.5, -0.5])
+			col = i // 13
+			val = i % 13
+			
+			vec = np.zeros(4)
+			# snum = val
+			# dist = 0
+			# recent = 0
+			# sdam = 0
+			if val < 6:
+				for j in range(0, val+1):
+					if hand[col*13+j]:
+						vec[0] += j
+					else:
+						vec[3] += j
+				for j in range(val+1, 6):
+					if deck[col*13+j]:
+						vec[1] = j - val
+						if col*13+j in Last3:
+							vec[2] = j - val
+						break
+			else:
+				for j in range(val, 12):
+					if hand[col*13+j]:
+						vec[0] += j
+					else:
+						vec[3] += j
+				for j in range(7, val):
+					if deck[col*13+j]:
+						vec[1] = j - val
+						if col*13+j in Last3:
+							vec[2] = j - val
+						break
+			penalty[i] = coef@vec
+		card = min(penalty, key=penalty.get)
+		# print("[Debug]", penalty)
+		return card
+	else:
+		return can.index(True)
+		
+def s_AI2(hand, deck):
+	can = can_put(hand, deck)
+	fold = not any(can)
 	vec = np.asarray([float(x) for x in hand]+[float(x) for x in deck])
 
 	can_vec = np.asarray([float(x) for x in can])
@@ -128,6 +178,9 @@ def s_AI(hand, deck):
 		# print("[DEBUG]smartboi")
 		return res
 	return hand.index(True) if fold else can.index(True)
+
+def logBehavior(p, card, fold):
+	Behavior[p].append([fold, card]+OnHand[p][:]+Deck[:])
 
 
 def processBehavior(winn, weight):
@@ -160,6 +213,10 @@ def processBehavior(winn, weight):
 	Model_fold, res, rnk, sing = np.linalg.lstsq(data1, y1, rcond=None)
 	Model, res, rnk, sing = np.linalg.lstsq(data2, y2, rcond=None)
 
+
+
+
+
 rnd.seed(datetime.now())
 while True:
 	init()
@@ -173,7 +230,7 @@ while True:
 				print("[Game] Deck:")
 				print_set(Deck)
 				print("[Game] Your cards:")
-				print_set(OnHand[current], highlight=color.YELLOW)
+				print_set(OnHand[current])#, highlight=color.YELLOW)
 				while True:
 					pinput = input("[Game] PLEASE ENTER [SHDC][A-K] or [*]: ")
 					if '*' in pinput:
@@ -195,15 +252,19 @@ while True:
 			else:
 				pcard = s_AI(OnHand[current], Deck)
 
-			Behavior[current].append([pfold, pcard]+OnHand[current][:]+Deck[:])
-			
+			logBehavior(current, pcard, pfold)			
 			OnHand[current][pcard] = False
 			Deck[pcard] = not pfold
 			if pfold:
 				Folded[current] += (pcard%13+1)
+			else:
+				if len(Last3) == 3:
+					del Last3[0]
+				Last3.append(pcard)
 			actions += 1
 
 			print(current, "FOLDED" if pfold else "PUT {} {}.".format(header[pcard//13], letters[pcard%13]))
+			# print(current, ("FOLDED" if pfold else "PUT") + " {} {}.".format(header[pcard//13], letters[pcard%13]))
 
 			current = ppl[(ppl.index(current)+1)%4]
 	print("[Game] Game Over.")
