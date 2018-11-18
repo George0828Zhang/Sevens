@@ -39,6 +39,7 @@ def init():
 	global Behavior
 	global current
 	global actions
+	global Last3
 
 	for x in ppl:
 		OnHand[x] = [False]*52
@@ -56,6 +57,7 @@ def init():
 			current = recvr
 			print("[Game]", recvr, "is to serve.")
 	Deck = [False]*52
+	Last3 = [-1]*3
 	actions = 0
 
 def parse_input(msg):
@@ -109,75 +111,88 @@ def print_set(sset, end='\n', highlight=''):
 
 
 coefF = np.asarray([1, -0.5, 0.3, -0.5])
-coef = np.asarray([1, 1, -0.5, -0.5])
+coef = np.asarray([1, 1, -1, -0.5])
 try:
-	BData = np.load('behavior_data.npy')
+	BData = list(np.load('behavior_data.npy'))
 except FileNotFoundError:
 	print("[Data] behavior_data.npy not found. creating...")
+	# [weight]+[fold, card]+Last3[:]+OnHand[p][:]+Deck[:]
+	# BData = np.array([[0, 0, 6]+[float(i==6) for i in range(104)]])
 	BData = []
 
 
-def decode(hand, deck, i, fold):
-	if fold:		
-		col = i // 13
-		val = i % 13
-		# sum(num), dist, recent, damage
-		vec = np.zeros(4)
+def decode(hand, deck, i, last3, fold):
+	col = i // 13
+	val = i % 13
+	hsuit = hand[col*13:col*13+13]
+	dsuit = deck[col*13:col*13+13]
+	recent = []
+	for x in last3:
+		if x // 13 == col:
+			recent.append(x%13)
+
+	if fold:
+		# model: (total penalty) - dist + recent_dist - damage
+		penalty, dist, recent_dist, damage = [0, 0, 0, 0]
+
 		if val < 6:
 			for j in range(0, val+1):
-				if hand[col*13+j]:
-					vec[0] += j
+				if hsuit[j]:
+					penalty += j
 				else:
-					vec[3] += j
+					damage += j
 			for j in range(val+1, 7):
-				if deck[col*13+j]:
-					vec[1] = j - val
-					if col*13+j in Last3:
-						vec[2] = j - val
+				if dsuit[j]:
+					dist = j - val
+					if j in recent:
+						recent_dist = j - val
 					break
 				if j==6:
-					vec[1] = 7 - val
-					vec[2] = 7 - val
-
+					# not even 7 is on deck
+					dist = 7 - val
+					recent_dist = 7 - val
 		else:
-			for j in range(val, 12):
-				if hand[col*13+j]:
-					vec[0] += j
+			for j in range(val, 13):
+				if hsuit[j]:
+					penalty += j
 				else:
-					vec[3] += j
-			for j in range(7, val)[::-1]:
-				if deck[col*13+j]:
-					vec[1] = val - j
-					if col*13+j in Last3:
-						vec[2] = val - j
+					damage += j
+			for j in range(6, val)[::-1]:
+				if dsuit[j]:
+					dist = val - j
+					if j in recent:
+						recent_dist = val - j
 					break
 				if j==6:
-					vec[1] = val - 7
-					vec[2] = val - 7
-		return vec
+					# not even 7 is on deck
+					dist = val - 6 + 1
+					recent_dist = val - 6 + 1
+		return np.asarray([penalty, dist, recent_dist, damage])
 	else:
-		col = i // 13
-		val = i % 13
-		# num, potential/dist, damage, recent damge, 
-		vec = np.zeros(4)
-		vec[0] = val
+		# model: gain + potential_gain/dist - op gain - recent op gain
+		gain, sub_gain, op_gain, recent_gain = [0, 0, 0, 0]
+		gain = val
 		if val <= 6:
 			for j in range(0, val):
-				if hand[col*13+j]:
-					vec[1] += j / (val - j)
+				if hsuit[j]:
+					op_gain = 0
+					# ^ this is because op_gain will only influence j now
+					sub_gain += (j / (val - j))
 				else:
-					vec[2] += j
-				if i+1 in Last3:
-					vec[3] += j
+					op_gain += j
+				if val+1 in recent:
+					recent_gain += j
 		if val >= 6:
-			for j in range(val+1, 12):
-				if hand[col*13+j]:
-					vec[1] += j / (j - val)
+			for j in range(val+1, 13)[::-1]:
+				if hsuit[j]:
+					op_gain = 0
+					# ^ this is because op_gain will only influence j now
+					sub_gain += (j / (j - val))
 				else:
-					vec[2] += j
-				if i-1 in Last3:
-					vec[3] += j
-		return vec
+					op_gain += j
+				if val-1 in recent:
+					recent_gain += j
+		return np.asarray([gain, sub_gain, op_gain, recent_gain])
 
 
 def s_AI(hand, deck):
@@ -189,7 +204,7 @@ def s_AI(hand, deck):
 		penalty = {}
 		for i in range(52):
 			if hand[i]:
-				vec = decode(hand, deck, i, fold)
+				vec = decode(hand, deck, i, Last3, fold)
 				penalty[i] = coefF@vec
 			else:
 				penalty[i] = np.inf
@@ -201,7 +216,7 @@ def s_AI(hand, deck):
 		gain = {}
 		for i in range(52):
 			if can[i]:
-				vec = decode(hand, deck, i, fold)
+				vec = decode(hand, deck, i, Last3, fold)
 				gain[i] = coef@vec
 			else:
 				gain[i] = -np.inf
@@ -210,21 +225,9 @@ def s_AI(hand, deck):
 
 
 def logBehavior(p, card, fold, can):
-	Behavior[p].append([fold, card]+OnHand[p][:]+Deck[:])
+	# fixed bug: Last3 was empty for the first action
+	Behavior[p].append([fold, card]+Last3[:]+OnHand[p][:]+Deck[:])
 
-# only this time:
-# newBData = []
-# for x in BData:
-# 	tscore, tfold, tcard = x[0:3]
-# 	thand = x[3:55]
-# 	tdeck = x[55:]
-# 	vec = decode(thand, tdeck, tcard, tfold)
-# 	nvec = np.zeros(7)
-# 	nvec[0:3] = x[0:3]
-# 	nvec[3:] = vec[:]
-# 	newBData.append(nvec)
-# np.save("behavior_data2.npy", newBData)
-# print("[OKKKKKK]")
 
 
 def processBehavior(winn, weight):
@@ -232,7 +235,11 @@ def processBehavior(winn, weight):
 	global coefF
 	global coef
 	if winn is not None:
-		BData = np.concatenate((BData, [[weight]+x for x in Behavior[winn]]), axis=0)		
+		for x in Behavior[winn]:
+			BData.append([weight]+x)
+		# BData = np.concatenate((BData, [[weight]+x for x in Behavior[winn]]), axis=0)
+	if len(BData) <= 1:
+		return
 
 	# train model
 	data1 = []
@@ -243,34 +250,48 @@ def processBehavior(winn, weight):
 		loop = 5
 		# score fold card vec[4]
 		score, fold, card = x[0:3]
-		hand = x[3:55]
-		deck = x[55:]
+		last3 = x[3:6]
+		hand = x[6:58]
+		deck = x[58:]
 		
 		if score > 13:
 			loop = 1
 		elif score > 0:
 			loop = 2
 
-		for i in range(loop):		
+		while loop > 0:
+			loop -= 1		
 			if fold == 1:
-				for i in range(52):
-					if hand[i]:
+				tmp_y = []
+				for j in range(52):
+					if hand[j]:
 						# maximum 13 additions
-						vec = decode(hand, deck, i, True)
-						data1.append(vec)						
-						y1.append(coefF@vec if i!=card else 0)
+						vec = decode(hand, deck, j, last3, True)
+						data1.append(vec)
+						tmp_y.append(coefF@vec)				
+				localmin = min(tmp_y)
+				localmax = max(tmp_y)
+				y1 += [localmin if j == card else k for (j, k) in enumerate(tmp_y)] # choice card should have least penalty
+
 			else:
+				tmp_y = []
 				can = can_put(hand, deck)
-				for i in range(52):
-					if can[i]:
+				for j in range(52):
+					if can[j]:
 						# maximum 8 additions
-						vec = decode(hand, deck, i, False)
+						vec = decode(hand, deck, j, last3, False)
 						data2.append(vec)
-						y2.append(coef@vec if i==card else 0)
+						tmp_y.append(coef@vec)				
+				localmin = min(tmp_y)
+				localmax = max(tmp_y)
+				y2 += [localmax if j == card else k for (j, k) in enumerate(tmp_y)] # choice card should have most gain
 				
 				# y2.append([float(t==card) for t in range(52)])
-
-	coefF, res, rnk, sing = np.linalg.lstsq(data1, y1, rcond=None)
+	# print(np.asarray(data1).shape, np.asarray(y1).shape)
+	if len(y1) > 0:
+		coefF, res, rnk, sing = np.linalg.lstsq(data1, y1, rcond=None)
+	else:
+		print("[Debug] No fold.")
 	coef, res, rnk, sing = np.linalg.lstsq(data2, y2, rcond=None)
 	print("[Debug]", coefF, coef)
 	# coefF = np.asarray([1, -0.5, 0.3, -0.5])
@@ -294,7 +315,7 @@ while True:
 				print("[Game] Deck:")
 				print_set(Deck)
 				print("[Game] Your cards:")
-				print_set(OnHand[current])#, highlight=color.YELLOW)
+				print_set(OnHand[current], highlight=color.YELLOW)
 				while True:
 					pinput = input("[Game] PLEASE ENTER [SHDC][A-K] or [*]: ")
 					if '*' in pinput:
