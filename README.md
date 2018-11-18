@@ -31,17 +31,17 @@ The functions basically checks which card on hand has the least total penalty an
 ##### Scenario 2 : `Hand` does contain available cards to put.
 In this case, we need to put a card. We assume the following model for the gain of putting a card
 ```
-Total Gain = b0*gain + b1*potential_gain/dist - b2*op_gain - b3*recent_op_gain
+Total Gain = b0*gain + b1*potential_gain/sqrt(dist) - b2*op_gain - b3*recent_op_gain
 ```
 We calculate four values for each card on hand:
 - `gain`: the value of the card being put on deck.
-- `potential_gain/dist`: sum of the following value for each cards being blocked by the current card: value of blocked card, divided by distance between blocked and blocking card. The purpose of this is to encourage putting out cards that has many pending cards behind it. For example, if the cards on hand are `Spade 9, Q, K` then putting `Spade 9` yields a value of `12/3 + 13/4 = 7.25`.
-- `op_gain`: potential gain for opponents assuming worst case where all subsequent cards up until the next card in hand are not folded. For example, if hand contains `Spade 9,Q`, then putting `Spade 9` yields `10 + 11 = 21`. Note that `K` is ignored since it is more relevant to `Q`.
-- `recent_op_gain`: damage to others. Suppose we have `Spade A, 3` then folding `Spade 3` yields `2`
+- `potential_gain/sqrt(dist)`: sum of the following value for each cards being blocked by the current card: value of blocked card, divided by square-rooted distance between blocked and blocking card. The purpose of this is to encourage putting out cards that has many pending cards behind it. For example, if the cards on hand are `Spade 9, Q, K` then putting `Spade 9` yields a value of `12/1.732 + 13/2 = 13.43`.
+- `op_gain`: potential gain for opponents assuming worst case where all subsequent cards are not folded. For example, if hand contains `Spade 8,10,Q`, then putting `Spade 8` yields `9 + (11 + 13/2)/2 = 17.5`. Note that `K` is halved twice and J is halved once since `K` is more relevant to `10,Q` than `8` and `J` more to `10` than `8`.
+- `recent_op_gain`: this value further panalizes the direction where the sequence is going, so as to discourage putting cards that way. For example, if `Spade 8` is in `last3`, and `hand` contains `Spade 9, J`, then putting `Spade 9` will yield `10 + (12 + 13/2)/2 = 22.5` for this value.    
 
-As for `(b0, b1, b2, b3)`, we assume a initial model of `(1, 1, -0.5, -0.3)`. The model is updated (using behavior data from the Player or another winner) after each round. See [How it works (training and improving)](#how-it-works-training-and-improving)
+As for `(b0, b1, b2, b3)`, we assume a initial model of `(1, 0.5, -0.5, -0.3)`. The model is updated (using behavior data from the Player or another winner) after each round. See [How it works (training and improving)](#how-it-works-training-and-improving)
 
-The functions basically checks which card on hand has the least total penalty and outputs the card.
+The functions basically checks which card on hand is available and has the most total gain and outputs the card.
 ## How it works (training and improving)
 Detailed explanation of the following functions 
 ```python
