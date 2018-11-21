@@ -112,15 +112,15 @@ def print_set(sset, end='\n', highlight=''):
 	print("", end=end)
 
 
-coefF = np.asarray([1, -0.5, 0.3, -0.5])
-coef = np.asarray([1, 0.5, -0.5, -0.3])
+
 try:
-	BData = list(np.load('behavior_data.npy'))
+	md = np.load('coefs.npy')
+	coefF = md[0]
+	coef = md[1]
 except FileNotFoundError:
-	print("[Data] behavior_data.npy not found. creating...")
-	# [weight]+[fold, card]+Last3[:]+OnHand[p][:]+Deck[:]
-	# BData = np.array([[0, 0, 6]+[float(i==6) for i in range(104)]])
-	BData = []
+	print("[Data] coefs.npy not found. creating...")
+	coefF = np.asarray([1, -0.5, 0.3, -0.5])
+	coef = np.asarray([0, 1, -0.3, -0.1])
 
 
 def decode(hand, deck, i, last3, fold):
@@ -136,23 +136,25 @@ def decode(hand, deck, i, last3, fold):
 	if fold:
 		# model: (total penalty) - dist + recent_dist - damage
 		penalty, dist, recent_dist, damage = [0, 0, 0, 0]
-
+		# TODO redefine dist: how many 'unseen' cards between this card and the closest on deck
 		if val < 6:
 			for j in range(0, val+1):
 				if hsuit[j]:
 					penalty += j
 				else:
 					damage += j
-			for j in range(val+1, 7):
+			for j in range(val+1, 7):				
 				if dsuit[j]:
-					dist = j - val
+					# dist = j - val
 					if j in recent:
-						recent_dist = j - val
+						recent_dist = dist
 					break
+				elif not hsuit[j]:
+					dist += 1
 				if j==6:
 					# not even 7 is on deck
-					dist = 7 - val
-					recent_dist = 7 - val
+					dist += 1
+					recent_dist = 0
 		else:
 			for j in range(val, 13):
 				if hsuit[j]:
@@ -161,14 +163,16 @@ def decode(hand, deck, i, last3, fold):
 					damage += j
 			for j in range(6, val)[::-1]:
 				if dsuit[j]:
-					dist = val - j
+					# dist = val - j
 					if j in recent:
-						recent_dist = val - j
+						recent_dist = dist
 					break
+				elif not hsuit[j]:
+					dist += 1
 				if j==6:
 					# not even 7 is on deck
 					dist = val - 6 + 1
-					recent_dist = val - 6 + 1
+					recent_dist = 0
 		return np.asarray([penalty, dist, recent_dist, damage])
 	else:
 		# model: gain + potential_gain/dist - op gain - recent op gain
@@ -233,25 +237,28 @@ def logBehavior(p, card, fold):
 	# fixed bug: Last3 was empty for the first action
 	Behavior[p].append([fold, card]+Last3[:]+OnHand[p][:]+Deck[:])
 
+def norm(v):
+	a = np.linalg.norm(v)
+	if a <= 0:
+		return v
+	return v / a
 
+def gradient(x, y, w):
+	dot = x@w
+	return 2*(np.arctan(dot)-y)/(1+dot**2)*x
 
 def processBehavior(winn, weight):
-	global BData
 	global coefF
 	global coef
-	if winn is not None:
-		for x in Behavior[winn]:
-			BData.append([weight]+x)
-		# BData = np.concatenate((BData, [[weight]+x for x in Behavior[winn]]), axis=0)
-	if len(BData) <= 1:
+	if winn is None:
 		return
 
-	# train model
-	data1 = []
-	data2 = []
-	y1 = []
-	y2 = []
-	for x in BData:
+	ita = 0.1
+	delta_coefF = np.zeros(4)
+	delta_coef = np.zeros(4)
+
+	# train model	
+	for x in Behavior[winn]:
 		loop = 5
 		# score fold card vec[4]
 		score, fold, card = x[0:3]
@@ -272,12 +279,7 @@ def processBehavior(winn, weight):
 					if hand[j]:
 						# maximum 13 additions
 						vec = decode(hand, deck, j, last3, True)
-						data1.append(vec)
-						tmp_y.append(coefF@vec)				
-				localmin = min(tmp_y)
-				localmax = max(tmp_y)
-				y1 += [localmin if j == card else k for (j, k) in enumerate(tmp_y)] # choice card should have least penalty
-
+						delta_coefF += gradient(vec, float(j==card), coefF)
 			else:
 				tmp_y = []
 				can = can_put(hand, deck)
@@ -285,22 +287,11 @@ def processBehavior(winn, weight):
 					if can[j]:
 						# maximum 8 additions
 						vec = decode(hand, deck, j, last3, False)
-						data2.append(vec)
-						tmp_y.append(coef@vec)				
-				localmin = min(tmp_y)
-				localmax = max(tmp_y)
-				y2 += [localmax if j == card else k for (j, k) in enumerate(tmp_y)] # choice card should have most gain
-				
-				# y2.append([float(t==card) for t in range(52)])
-	# print(np.asarray(data1).shape, np.asarray(y1).shape)
-	if len(y1) > 0:
-		coefF, res, rnk, sing = np.linalg.lstsq(data1, y1, rcond=None)
-	else:
-		print("[Debug] No fold.")
-	coef, res, rnk, sing = np.linalg.lstsq(data2, y2, rcond=None)
-	print("[Debug]", coefF, coef)
-	# coefF = np.asarray([1, -0.5, 0.3, -0.5])
-	# coef = np.asarray([1, 1, -0.5, -0.5])	
+						delta_coef += gradient(vec, float(j==card), coef)
+	
+	coefF = coefF - ita*norm(delta_coefF)
+	coef = coef - ita*norm(delta_coef)
+	# print(delta_coefF, delta_coef)
 
 
 
@@ -372,8 +363,8 @@ while True:
 	if input("[Game] Another game ? [Y/N]")[0].upper() != "Y":
 		break 
 
-np.save('behavior_data.npy', BData)
-print("[Data] Behavior data is saved to behavior_data.npy. N = {}".format(len(BData)))
+np.save('coefs.npy', [coefF, coef])
+print("[Data] Behavior data is saved to coefs.npy.", coefF, coef)
 
 
 # print([int(x) for x in Behavior['Player'][0]])
