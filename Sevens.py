@@ -245,7 +245,8 @@ def norm(v):
 
 def gradient(x, y, w):
 	dot = x@w
-	return 2*(np.arctan(dot)-y)/(1+dot**2)*x
+	sigm = 1. / (1. + np.exp(-dot))
+	return 2.*(sigm-y)*(sigm*(1.-sigm))*x
 
 def processBehavior(winn, weight):
 	global coefF
@@ -253,45 +254,44 @@ def processBehavior(winn, weight):
 	if winn is None:
 		return
 
-	ita = 0.1
-	delta_coefF = np.zeros(4)
-	delta_coef = np.zeros(4)
+	loop = 5
+	if weight > 13:
+		loop = 1
+	elif weight > 0:
+		loop = 3
 
-	# train model	
-	for x in Behavior[winn]:
-		loop = 5
-		# score fold card vec[4]
-		score, fold, card = x[0:3]
-		last3 = x[3:6]
-		hand = x[6:58]
-		deck = x[58:]
-		
-		if score > 13:
-			loop = 1
-		elif score > 0:
-			loop = 2
+	while loop>0:
+		loop -= 1
+		ita = 0.1	
+		delta_coefF = np.zeros(4)
+		delta_coef = np.zeros(4)
 
-		while loop > 0:
+		# train model	
+		for x in Behavior[winn]:		
+			# fold card last3[3] hand[52] deck[52]
+			fold, card = x[0:2]
+			last3 = x[2:5]
+			hand = x[5:57]
+			deck = x[57:]
+			
 			loop -= 1		
 			if fold == 1:
-				tmp_y = []
 				for j in range(52):
 					if hand[j]:
 						# maximum 13 additions
 						vec = decode(hand, deck, j, last3, True)
 						delta_coefF += gradient(vec, float(j==card), coefF)
 			else:
-				tmp_y = []
 				can = can_put(hand, deck)
 				for j in range(52):
 					if can[j]:
 						# maximum 8 additions
 						vec = decode(hand, deck, j, last3, False)
 						delta_coef += gradient(vec, float(j==card), coef)
-	
-	coefF = coefF - ita*norm(delta_coefF)
-	coef = coef - ita*norm(delta_coef)
-	# print(delta_coefF, delta_coef)
+				
+		
+		coefF = coefF - ita*norm(delta_coefF)
+		coef = coef - ita*norm(delta_coef)
 
 
 
