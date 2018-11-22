@@ -21,8 +21,8 @@ Total Penalty = a0*folded - a1*dist + a2*recent_dist - a3*damage
 ```
 We calculate four values for each card on hand:
 - `folded`: a value that specify how much points is folded, including points of cards destined to be folded should we choose to fold the current card. For example, folding `Spade 2` while holding `Spade A & 2` gives a value of `3`.
-- `dist`: the distance from the card to the card on deck that is farest to the center. The purpose of this is to reduce penalty for cards that are far away from the established sequence on deck, which is less hopeful to be available soon. For example, if the cards on deck are `Spade 7, 6, 5` then folding `Spade A` yields a value of `5 - 1 = 4`.
-- `recent_dist`: this value is to penalize the previous one if the sequence is moving toward the card we chose to fold. For example, assume same condition as in `dist`, but `Spade 5` is one of the latest 3 cards put on deck, then folding `Spade A` yields a value of `5 - 1 = 4`. combining with values `a1 > a2` gives a meaningful tradeoff.
+- `dist`: amount of opponents' cards between this card and the closest card on deck. The purpose of this is to reduce penalty for cards that are far away from the established sequence on deck, which is less hopeful to be available soon. For example, if the cards on deck are `Spade 7, 6, 5` and on hand `Spade A, 3` then folding `Spade A` yields a value of `2`.
+- `recent_dist`: this value is to penalize the previous one if the sequence is moving toward the card we chose to fold. For example, assume same condition as in `dist`, but `Spade 5` is one of the latest 3 cards put on deck, then folding `Spade A` yields a value of `2`. combining with values `a1 > a2` gives a meaningful tradeoff.
 - `damage`: damage to others. Suppose we have `Spade A, 3` then folding `Spade 3` yields `2`
 
 As for `(a0, a1, a2, a3)`, we assume an initial model of `(1, 0.5, 0.3, 0.5)`. The model is updated (using behavior data from the Player or another winner) after each round. See [How it works (training and improving)](#how-it-works-training-and-improving)
@@ -64,15 +64,10 @@ After each round, the data is thrown into `processBehavior` with parameter `weig
 ```python
 ...
 loop = 5
-weight, fold, card = x[0:3]
-last3 = x[3:6]
-  hand = x[6:58]
-  deck = x[58:]
-
 if weight > 13:
   loop = 1
 elif weight > 0:
-  loop = 2
+  loop = 3
 ...
 ```
 
